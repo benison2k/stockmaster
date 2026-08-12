@@ -23,10 +23,13 @@ $csrfToken = \App\Core\Security::generateCSRFToken();
         <button id="openModalBtn" class="btn btn-primary">+ Add Product</button>
     </div>
 
-    <div class="inventory-toolbar">
-        <div class="search-box">
+    <div class="inventory-toolbar" style="display: flex; gap: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+        <div class="search-box" style="flex: 1; min-width: 250px;">
             <input type="text" id="inventorySearch" placeholder="Search product name, barcode, or category..." class="search-input">
         </div>
+        <button type="button" id="filterLowStockBtn" class="btn btn-light" style="border: 1px solid var(--border-color); white-space: nowrap;">
+            ⚠️ View Resupply List (<span id="lowStockCount">0</span>)
+        </button>
     </div>
 
     <div class="table-card">
@@ -226,6 +229,67 @@ document.addEventListener('DOMContentLoaded', function () {
     const baseUrl = "<?= BASE_URL; ?>";
 
     const stockControls = document.querySelectorAll('.quick-stock-control');
+    const productRows = document.querySelectorAll('.product-row');
+    const noSearchResultRow = document.getElementById('noSearchResultRow');
+
+    // --- LOW STOCK / RESUPPLY FILTER LOGIC ---
+    const filterLowStockBtn = document.getElementById('filterLowStockBtn');
+    const lowStockCountSpan = document.getElementById('lowStockCount');
+    let showingLowStockOnly = false;
+
+    function updateLowStockCount() {
+        let count = 0;
+        productRows.forEach(row => {
+            const statusBadge = row.querySelector('.col-status .badge');
+            if (statusBadge && (statusBadge.classList.contains('badge-danger') || statusBadge.classList.contains('badge-warning'))) {
+                count++;
+            }
+        });
+        if (lowStockCountSpan) {
+            lowStockCountSpan.textContent = count;
+        }
+    }
+    updateLowStockCount();
+
+    if (filterLowStockBtn) {
+        filterLowStockBtn.addEventListener('click', function () {
+            showingLowStockOnly = !showingLowStockOnly;
+            let visibleCount = 0;
+
+            productRows.forEach(row => {
+                const statusBadge = row.querySelector('.col-status .badge');
+                const isLowOrOut = statusBadge && (statusBadge.classList.contains('badge-danger') || statusBadge.classList.contains('badge-warning'));
+
+                if (showingLowStockOnly) {
+                    if (isLowOrOut) {
+                        row.style.display = '';
+                        visibleCount++;
+                    } else {
+                        row.style.display = 'none';
+                    }
+                } else {
+                    row.style.display = '';
+                    visibleCount++;
+                }
+            });
+
+            if (showingLowStockOnly) {
+                this.classList.remove('btn-light');
+                this.classList.add('btn-warning');
+                this.style.color = '#fff';
+                this.textContent = `Showing All Products`;
+            } else {
+                this.classList.remove('btn-warning');
+                this.classList.add('btn-light');
+                this.style.color = '';
+                this.innerHTML = `⚠️ View Resupply List (<span id="lowStockCount">${document.querySelectorAll('.product-row .badge-danger, .product-row .badge-warning').length}</span>)`;
+            }
+
+            if (noSearchResultRow) {
+                noSearchResultRow.style.display = (visibleCount === 0 && productRows.length > 0) ? '' : 'none';
+            }
+        });
+    }
 
     stockControls.forEach(control => {
         const minusBtn = control.querySelector('.btn-stock-minus');
@@ -310,6 +374,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     statusTd.innerHTML = '<span class="badge badge-success">In Stock</span>';
                 }
 
+                updateLowStockCount();
+
                 saveBtn.textContent = '✓';
                 saveBtn.classList.remove('active');
                 saveBtn.classList.add('saved');
@@ -393,8 +459,6 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     const searchInput = document.getElementById('inventorySearch');
-    const productRows = document.querySelectorAll('.product-row');
-    const noSearchResultRow = document.getElementById('noSearchResultRow');
 
     if (searchInput) {
         searchInput.addEventListener('input', function () {
