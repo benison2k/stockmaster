@@ -1,0 +1,9 @@
+{
+    "name": "benison2k/stockmaster",
+    "description": "StockMaster POS and Inventory System",
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/"
+        }
+    }
+}
