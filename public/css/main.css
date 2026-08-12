@@ -1,0 +1,4 @@
+@import 'base/variables.css';
+@import 'layout/layout.css';
+@import 'components/components.css';
+@import 'pages/inventory.css';
