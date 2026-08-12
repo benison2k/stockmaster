@@ -14,6 +14,28 @@ if (!empty($products)) {
 $csrfToken = \App\Core\Security::generateCSRFToken();
 ?>
 
+<style>
+.pagination-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--border-color, #e2e8f0);
+    flex-wrap: wrap;
+    gap: 1rem;
+    font-size: 0.875rem;
+    color: var(--text-muted, #64748b);
+}
+.pagination-buttons {
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+}
+.pagination-ellipsis {
+    padding: 0 0.25rem;
+}
+</style>
+
 <div class="inventory-wrapper">
     <div class="page-header">
         <div>
@@ -107,6 +129,8 @@ $csrfToken = \App\Core\Security::generateCSRFToken();
                 </tbody>
             </table>
         </div>
+        <!-- Dynamic Pagination Bar injected here -->
+        <div id="inventoryPagination" class="pagination-bar" style="display: none;"></div>
     </div>
 </div>
 
@@ -229,8 +253,15 @@ document.addEventListener('DOMContentLoaded', function () {
     const baseUrl = "<?= BASE_URL; ?>";
 
     const stockControls = document.querySelectorAll('.quick-stock-control');
-    const productRows = document.querySelectorAll('.product-row');
+    const productRows = Array.from(document.querySelectorAll('.product-row'));
+    const tableBody = document.getElementById('inventoryTableBody');
+    const noProductsRow = document.getElementById('noProductsRow');
     const noSearchResultRow = document.getElementById('noSearchResultRow');
+    const searchInput = document.getElementById('inventorySearch');
+
+    // --- PAGINATION CONFIGURATION ---
+    let currentPage = 1;
+    const rowsPerPage = 10;
 
     // --- LOW STOCK / RESUPPLY FILTER LOGIC ---
     const filterLowStockBtn = document.getElementById('filterLowStockBtn');
@@ -254,24 +285,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (filterLowStockBtn) {
         filterLowStockBtn.addEventListener('click', function () {
             showingLowStockOnly = !showingLowStockOnly;
-            let visibleCount = 0;
-
-            productRows.forEach(row => {
-                const statusBadge = row.querySelector('.col-status .badge');
-                const isLowOrOut = statusBadge && (statusBadge.classList.contains('badge-danger') || statusBadge.classList.contains('badge-warning'));
-
-                if (showingLowStockOnly) {
-                    if (isLowOrOut) {
-                        row.style.display = '';
-                        visibleCount++;
-                    } else {
-                        row.style.display = 'none';
-                    }
-                } else {
-                    row.style.display = '';
-                    visibleCount++;
-                }
-            });
+            currentPage = 1; // Reset to page 1 on filter change
 
             if (showingLowStockOnly) {
                 this.classList.remove('btn-light');
@@ -284,13 +298,186 @@ document.addEventListener('DOMContentLoaded', function () {
                 this.style.color = '';
                 this.innerHTML = `⚠️ View Resupply List (<span id="lowStockCount">${document.querySelectorAll('.product-row .badge-danger, .product-row .badge-warning').length}</span>)`;
             }
-
-            if (noSearchResultRow) {
-                noSearchResultRow.style.display = (visibleCount === 0 && productRows.length > 0) ? '' : 'none';
-            }
+            updateTableDisplay();
         });
     }
 
+    // --- SORTING STATE ---
+    const sortableHeaders = document.querySelectorAll('.sortable');
+    let currentSort = { key: null, state: 'none' };
+
+    sortableHeaders.forEach(header => {
+        header.addEventListener('click', function () {
+            const sortKey = this.getAttribute('data-sort');
+
+            if (currentSort.key === sortKey) {
+                if (currentSort.state === 'asc') {
+                    currentSort.state = 'desc';
+                } else if (currentSort.state === 'desc') {
+                    currentSort.state = 'none';
+                    currentSort.key = null;
+                }
+            } else {
+                currentSort.key = sortKey;
+                currentSort.state = 'asc';
+            }
+
+            sortableHeaders.forEach(h => {
+                h.classList.remove('sort-asc', 'sort-desc');
+                h.querySelector('.sort-icon').textContent = '↕';
+            });
+
+            if (currentSort.state === 'asc') {
+                this.classList.add('sort-asc');
+                this.querySelector('.sort-icon').textContent = '▲';
+            } else if (currentSort.state === 'desc') {
+                this.classList.add('sort-desc');
+                this.querySelector('.sort-icon').textContent = '▼';
+            }
+
+            currentPage = 1;
+            updateTableDisplay();
+        });
+    });
+
+    if (searchInput) {
+        searchInput.addEventListener('input', function () {
+            currentPage = 1;
+            updateTableDisplay();
+        });
+    }
+
+    // --- CENTRAL TABLE RENDER / FILTER / SORT / PAGINATE ENGINE ---
+    function updateTableDisplay() {
+        const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+        let filteredRows = [];
+
+        productRows.forEach(row => {
+            const barcode = row.querySelector('.col-barcode').textContent.toLowerCase();
+            const name = row.querySelector('.col-name').textContent.toLowerCase();
+            const category = row.querySelector('.col-category').textContent.toLowerCase();
+            const statusBadge = row.querySelector('.col-status .badge');
+            const isLowOrOut = statusBadge && (statusBadge.classList.contains('badge-danger') || statusBadge.classList.contains('badge-warning'));
+
+            const matchesSearch = barcode.includes(query) || name.includes(query) || category.includes(query);
+            const matchesResupply = !showingLowStockOnly || isLowOrOut;
+
+            if (matchesSearch && matchesResupply) {
+                filteredRows.push(row);
+            }
+        });
+
+        // Apply sorting
+        if (currentSort.key && currentSort.state !== 'none') {
+            filteredRows.sort((a, b) => {
+                let valA = a.getAttribute(`data-${currentSort.key}`);
+                let valB = b.getAttribute(`data-${currentSort.key}`);
+
+                if (currentSort.key === 'cost' || currentSort.key === 'selling' || currentSort.key === 'stock') {
+                    valA = parseFloat(valA) || 0;
+                    valB = parseFloat(valB) || 0;
+                }
+
+                if (valA < valB) return currentSort.state === 'asc' ? -1 : 1;
+                if (valA > valB) return currentSort.state === 'asc' ? 1 : -1;
+                return 0;
+            });
+        } else {
+            // Default sort by original template index
+            filteredRows.sort((a, b) => {
+                return parseInt(a.getAttribute('data-original-index'), 10) - parseInt(b.getAttribute('data-original-index'), 10);
+            });
+        }
+
+        // Pagination calculations
+        const totalFiltered = filteredRows.length;
+        const totalPages = Math.ceil(totalFiltered / rowsPerPage) || 1;
+        if (currentPage > totalPages) currentPage = totalPages;
+        if (currentPage < 1) currentPage = 1;
+
+        const startIndex = (currentPage - 1) * rowsPerPage;
+        const endIndex = startIndex + rowsPerPage;
+        const paginatedRows = filteredRows.slice(startIndex, endIndex);
+
+        // Hide all rows first
+        productRows.forEach(row => row.style.display = 'none');
+
+        // Show only paginated slice and re-append in correct order
+        paginatedRows.forEach(row => {
+            row.style.display = '';
+            tableBody.appendChild(row);
+        });
+
+        if (noProductsRow) tableBody.appendChild(noProductsRow);
+        if (noSearchResultRow) {
+            tableBody.appendChild(noSearchResultRow);
+            noSearchResultRow.style.display = (totalFiltered === 0 && productRows.length > 0) ? '' : 'none';
+        }
+
+        renderPaginationControls(totalFiltered, totalPages);
+    }
+
+    function renderPaginationControls(totalFiltered, totalPages) {
+        const paginationContainer = document.getElementById('inventoryPagination');
+        if (!paginationContainer) return;
+
+        if (totalFiltered <= rowsPerPage && totalPages <= 1) {
+            paginationContainer.style.display = 'none';
+            return;
+        } else {
+            paginationContainer.style.display = 'flex';
+        }
+
+        const startItem = totalFiltered === 0 ? 0 : (currentPage - 1) * rowsPerPage + 1;
+        const endItem = Math.min(currentPage * rowsPerPage, totalFiltered);
+
+        let html = `
+            <div class="pagination-info">Showing <strong>${startItem}</strong> to <strong>${endItem}</strong> of <strong>${totalFiltered}</strong> products</div>
+            <div class="pagination-buttons">
+                <button type="button" class="btn btn-sm btn-light" ${currentPage === 1 ? 'disabled' : ''} id="prevPageBtn">Previous</button>
+        `;
+
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+                html += `<button type="button" class="btn btn-sm ${i === currentPage ? 'btn-primary' : 'btn-light'} page-num-btn" data-page="${i}">${i}</button>`;
+            } else if (i === currentPage - 2 || i === currentPage + 2) {
+                html += `<span class="pagination-ellipsis">...</span>`;
+            }
+        }
+
+        html += `
+                <button type="button" class="btn btn-sm btn-light" ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''} id="nextPageBtn">Next</button>
+            </div>
+        `;
+
+        paginationContainer.innerHTML = html;
+
+        document.getElementById('prevPageBtn')?.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                updateTableDisplay();
+            }
+        });
+
+        document.getElementById('nextPageBtn')?.addEventListener('click', () => {
+            if (currentPage < totalPages) {
+                currentPage++;
+                updateTableDisplay();
+            }
+        });
+
+        paginationContainer.querySelectorAll('.page-num-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentPage = parseInt(btn.getAttribute('data-page'), 10);
+                updateTableDisplay();
+            });
+        });
+    }
+
+    // Initialize display on load
+    updateTableDisplay();
+
+    // --- QUICK STOCK CONTROLS & AJAX SAVE ---
     stockControls.forEach(control => {
         const minusBtn = control.querySelector('.btn-stock-minus');
         const plusBtn = control.querySelector('.btn-stock-plus');
@@ -375,6 +562,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
 
                 updateLowStockCount();
+                updateTableDisplay();
 
                 saveBtn.textContent = '✓';
                 saveBtn.classList.remove('active');
@@ -394,96 +582,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    const tableBody = document.getElementById('inventoryTableBody');
-    const sortableHeaders = document.querySelectorAll('.sortable');
-    let currentSort = { key: null, state: 'none' };
-
-    sortableHeaders.forEach(header => {
-        header.addEventListener('click', function () {
-            const sortKey = this.getAttribute('data-sort');
-
-            if (currentSort.key === sortKey) {
-                if (currentSort.state === 'asc') {
-                    currentSort.state = 'desc';
-                } else if (currentSort.state === 'desc') {
-                    currentSort.state = 'none';
-                    currentSort.key = null;
-                }
-            } else {
-                currentSort.key = sortKey;
-                currentSort.state = 'asc';
-            }
-
-            sortableHeaders.forEach(h => {
-                h.classList.remove('sort-asc', 'sort-desc');
-                h.querySelector('.sort-icon').textContent = '↕';
-            });
-
-            if (currentSort.state === 'asc') {
-                this.classList.add('sort-asc');
-                this.querySelector('.sort-icon').textContent = '▲';
-            } else if (currentSort.state === 'desc') {
-                this.classList.add('sort-desc');
-                this.querySelector('.sort-icon').textContent = '▼';
-            }
-
-            const rows = Array.from(tableBody.querySelectorAll('.product-row'));
-
-            rows.sort((a, b) => {
-                if (currentSort.state === 'none') {
-                    const indexA = parseInt(a.getAttribute('data-original-index'), 10);
-                    const indexB = parseInt(b.getAttribute('data-original-index'), 10);
-                    return indexA - indexB;
-                }
-
-                let valA = a.getAttribute(`data-${currentSort.key}`);
-                let valB = b.getAttribute(`data-${currentSort.key}`);
-
-                if (currentSort.key === 'cost' || currentSort.key === 'selling' || currentSort.key === 'stock') {
-                    valA = parseFloat(valA) || 0;
-                    valB = parseFloat(valB) || 0;
-                }
-
-                if (valA < valB) return currentSort.state === 'asc' ? -1 : 1;
-                if (valA > valB) return currentSort.state === 'asc' ? 1 : -1;
-                return 0;
-            });
-
-            const noProductsRow = document.getElementById('noProductsRow');
-            const noSearchResultRow = document.getElementById('noSearchResultRow');
-
-            rows.forEach(row => tableBody.appendChild(row));
-            if (noProductsRow) tableBody.appendChild(noProductsRow);
-            if (noSearchResultRow) tableBody.appendChild(noSearchResultRow);
-        });
-    });
-
-    const searchInput = document.getElementById('inventorySearch');
-
-    if (searchInput) {
-        searchInput.addEventListener('input', function () {
-            const query = this.value.toLowerCase().trim();
-            let visibleCount = 0;
-
-            productRows.forEach(row => {
-                const barcode = row.querySelector('.col-barcode').textContent.toLowerCase();
-                const name = row.querySelector('.col-name').textContent.toLowerCase();
-                const category = row.querySelector('.col-category').textContent.toLowerCase();
-
-                if (barcode.includes(query) || name.includes(query) || category.includes(query)) {
-                    row.style.display = '';
-                    visibleCount++;
-                } else {
-                    row.style.display = 'none';
-                }
-            });
-
-            if (noSearchResultRow) {
-                noSearchResultRow.style.display = (visibleCount === 0 && productRows.length > 0) ? '' : 'none';
-            }
-        });
-    }
-
+    // --- CATEGORY TOGGLE & MODAL HELPERS ---
     function setupCustomCategoryToggle(selectId, inputId) {
         const selectElem = document.getElementById(selectId);
         const inputElem = document.getElementById(inputId);
