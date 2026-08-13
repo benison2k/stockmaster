@@ -79,6 +79,7 @@
                         <a href="<?= BASE_URL; ?>/dashboard">Dashboard</a>
                         <a href="<?= BASE_URL; ?>/pos">POS</a>
                         <a href="<?= BASE_URL; ?>/inventory">Inventory</a>
+                        <a href="<?= BASE_URL; ?>/sales">Sales</a>
                         <a href="<?= BASE_URL; ?>/logout" class="btn-logout">Logout</a>
                     <?php else: ?>
                         <a href="<?= BASE_URL; ?>/login" class="btn-login">Login</a>
