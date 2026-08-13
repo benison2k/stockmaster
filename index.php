@@ -23,7 +23,9 @@ if (file_exists(ROOT_DIR . '/vendor/autoload.php')) {
     require_once ROOT_DIR . '/app/Controllers/HomeController.php';
     require_once ROOT_DIR . '/app/Controllers/AuthController.php';
     require_once ROOT_DIR . '/app/Controllers/InventoryController.php';
-    require_once ROOT_DIR . '/app/Controllers/PosController.php'; // Required for fallback if not using Composer
+    require_once ROOT_DIR . '/app/Controllers/PosController.php';
+    require_once ROOT_DIR . '/app/Controllers/SalesController.php';
+    
 }
 
 use App\Core\Router;
@@ -48,6 +50,10 @@ $router->add('POST', 'inventory/updateStock',  'InventoryController', 'updateSto
 // POS Routes
 $router->add('GET',  'pos',          'PosController', 'index');
 $router->add('POST', 'pos/checkout', 'PosController', 'checkout');
+
+// Sales Routes
+$router->add('GET', 'sales',         'SalesController', 'index');
+$router->add('GET', 'sales/details', 'SalesController', 'details');
 
 // Dispatch Request
 $url = $_GET['url'] ?? '';
