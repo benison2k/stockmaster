@@ -7,6 +7,11 @@ use PDO;
 
 class Product extends Model
 {
+    public function all(): array
+    {
+        return $this->getAll();
+    }
+
     public function getAll(): array
     {
         $stmt = $this->db->prepare("SELECT * FROM products ORDER BY id DESC");
